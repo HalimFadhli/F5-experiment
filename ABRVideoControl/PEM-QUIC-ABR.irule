@@ -1,0 +1,33 @@
+when PEM_POLICY {
+    if { [PEM::policy initial] } {
+        if {[IP::protocol] == 17} {
+            log local0. "UDP ABR Video Detected, Client [IP::client_addr]:[UDP::client_port], Server [IP::local_addr]:[UDP::local_port], App [CLASSIFICATION::app], Category [CLASSIFICATION::category], Protocol [CLASSIFICATION::protocol], IP Protocol [IP::protocol]"
+        } elseif {[IP::protocol] == 6} {
+            log local0. "TCP ABR Video Detected, Client [IP::client_addr]:[TCP::client_port], Server [IP::local_addr]:[TCP::local_port], App [CLASSIFICATION::app], Category [CLASSIFICATION::category], Protocol [CLASSIFICATION::protocol], IP Protocol [IP::protocol]"
+        }
+        ## allow to download 200k bytes for initial buffering
+        set start_buffer 400000
+        set cycles 0
+        ##log local0. "UDP ABR Video Detected [IP::client_addr]:[UDP::client_port]"
+        set pace_id [after 100 -periodic {
+            incr cycles
+            set bytes [IP::stats bytes out]
+            #log local0. "Bytes: $bytes"
+            if {($bytes >= $start_buffer) or ($cycles > 30)} {
+                if {[IP::protocol] == 17} {
+                    log local0. "Start pacing for UDP [IP::client_addr]:[UDP::client_port]"
+                    UDP::sendbuffer 1000000
+                    UDP::max_rate 896000
+                }
+                elseif {[IP::protocol] == 6} {
+                    log local0. "Start pacing for TCP [IP::client_addr]:[TCP::client_port]"
+                    TCP::pacing enable
+                    ## TCP uses BWC at the moment, or multiple VIP to VIP
+                    ##BWC::policy attach ip_opt_poc_bwc_rate_limit
+                }
+                after cancel -current
+                set pace_id 0
+            }
+        }]
+    }
+}
